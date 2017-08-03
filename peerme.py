@@ -128,7 +128,12 @@ class VPCPeering(object):
                 {'Name': 'accepter-vpc-info.vpc-id', 'Values':[slave_vpc_id]},
                 {'Name': 'status-code', 'Values': ['active', 'pending-acceptance']}
             ]
-            temporary_user.describe_vpc_peering_connections(Filters = filters)
+            connection_id = temporary_user.describe_vpc_peering_connections(Filters = filters)['VpcPeeringConnections']
+            if connection_ids:
+                print "A VPC peering connection already exists for VPCs:"
+                print master_vpc_id
+                print slave_vpc_id
+                print "The VPC connection Id is {}".format(connection_id)
         except Exception as error:
             print error
 
