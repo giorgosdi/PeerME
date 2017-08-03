@@ -129,11 +129,14 @@ class VPCPeering(object):
                 {'Name': 'status-code', 'Values': ['active', 'pending-acceptance']}
             ]
             connection_id = temporary_user.describe_vpc_peering_connections(Filters = filters)['VpcPeeringConnections']
-            if connection_ids:
+            if connection_id:
                 print "A VPC peering connection already exists for VPCs:"
-                print master_vpc_id
-                print slave_vpc_id
-                print "The VPC connection Id is {}".format(connection_id)
+                print "-    {}".format(master_vpc_id)
+                print "-    {}".format(slave_vpc_id)
+                print "The VPC connection Id is {}".format(connection_id[0]['VpcPeeringConnectionId'])
+                return True
+            else:
+                return False
         except Exception as error:
             print error
 
@@ -215,53 +218,56 @@ class VPCPeering(object):
             slave_vpc_id = self.get_vpc_id(slave_temporary_user)
 
         try:
-            print master_vpc_id, slave_vpc_id
-            print "."
-            print "VPC peering in progress.."
-            self.vpc_peering(master_temporary_user, master_vpc_id, slave_vpc_id, slave_account_number)
-            print "."
-            print "VPCs peered successfully !"
-            print "."
-            print "Moving on to accept the connection"
-            print "."
-            print "Getting master account peering connections"
-            master_peering_connections = self.get_peering_connections(master_temporary_user, 'pending-acceptance', [], master_vpc_id, slave_vpc_id)
-            try:
+            print "Checking if a VPC peering connection already exists between {} - {}".format(master_vpc_id, slave_vpc_id)
+            if not self.peering_connection_exists(master_temporary_user, master_vpc_id, slave_vpc_id):
                 print "."
-                print "Getting slave account peering connections"
-                if args.accept_conns:
-                    slave_peering_connections = self.get_peering_connections(slave_temporary_user, 'pending-acceptance', master_peering_connections, master_vpc_id)
-                    if master_peering_connections:
-                        if slave_peering_connections:
-                            self.accept_vpc_peering(slave_temporary_user, slave_peering_connections)
+                print "VPC peering in progress.."
+                self.vpc_peering(master_temporary_user, master_vpc_id, slave_vpc_id, slave_account_number)
+                print "."
+                print "VPCs peered successfully !"
+                print "."
+                print "Moving on to accept the connection"
+                print "."
+                print "Getting master account peering connections"
+                master_peering_connections = self.get_peering_connections(master_temporary_user, 'pending-acceptance', [], master_vpc_id, slave_vpc_id)
+                try:
+                    print "."
+                    print "Getting slave account peering connections"
+                    if args.accept_conns:
+                        slave_peering_connections = self.get_peering_connections(slave_temporary_user, 'pending-acceptance', master_peering_connections, master_vpc_id)
+                        if master_peering_connections:
+                            if slave_peering_connections:
+                                self.accept_vpc_peering(slave_temporary_user, slave_peering_connections)
+                                print "."
+                                print "All pending peer connections have been accepted !"
+                    else:
+                        slave_peering_connections = self.get_peering_connections(slave_temporary_user, 'pending-acceptance', master_peering_connections, master_vpc_id, slave_vpc_id)
+                        self.accept_vpc_peering(slave_temporary_user, slave_peering_connections)
+                        print "."
+                        print "The pending peering connection has been accepted !"
+
+
+                    if args.route_tables:
+                        print "."
+                        print "You chose to create the routes.."
+                        master_route_table_ids = self.get_route_table_ids(master_temporary_user, master_vpc_id)
+                        slave_route_table_ids = self.get_route_table_ids(slave_temporary_user, slave_vpc_id)
+                        print "."
+                        print "Creating routes.."
+                        if master_route_table_ids:
+                            slave_vpc_cidr = self.get_vpc_cidr(slave_temporary_user, slave_vpc_id)
+                            self.create_routes(master_temporary_user, master_route_table_ids, slave_vpc_cidr, master_peering_connections)
                             print "."
-                            print "All pending peer connections have been accepted !"
-                else:
-                    slave_peering_connections = self.get_peering_connections(slave_temporary_user, 'pending-acceptance', master_peering_connections, master_vpc_id, slave_vpc_id)
-                    self.accept_vpc_peering(slave_temporary_user, slave_peering_connections)
-                    print "."
-                    print "The pending peering connection has been accepted !"
-
-
-                if args.route_tables:
-                    print "."
-                    print "You chose to create the routes.."
-                    master_route_table_ids = self.get_route_table_ids(master_temporary_user, master_vpc_id)
-                    slave_route_table_ids = self.get_route_table_ids(slave_temporary_user, slave_vpc_id)
-                    print "."
-                    print "Creating routes.."
-                    if master_route_table_ids:
-                        slave_vpc_cidr = self.get_vpc_cidr(slave_temporary_user, slave_vpc_id)
-                        self.create_routes(master_temporary_user, master_route_table_ids, slave_vpc_cidr, master_peering_connections)
-                        print "."
-                        print "Routes created in the master account.."
-                    if slave_route_table_ids:
-                        master_vpc_cidr = self.get_vpc_cidr(master_temporary_user, master_vpc_id)
-                        self.create_routes(slave_temporary_user, slave_route_table_ids, master_vpc_cidr, slave_peering_connections)
-                        print "."
-                        print "Routes created in the slave account.."
-            except Exception as error:
-                print error
+                            print "Routes created in the master account.."
+                        if slave_route_table_ids:
+                            master_vpc_cidr = self.get_vpc_cidr(master_temporary_user, master_vpc_id)
+                            self.create_routes(slave_temporary_user, slave_route_table_ids, master_vpc_cidr, slave_peering_connections)
+                            print "."
+                            print "Routes created in the slave account.."
+                except Exception as error:
+                    print error
+            else:
+                print "Looks like you didn't have to do anything ; yay !"
         except Exception as error:
             print error
 
